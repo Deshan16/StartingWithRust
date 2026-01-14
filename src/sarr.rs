@@ -46,6 +46,7 @@ impl<T> Index<usize> for StaticArray<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
+        if index > self.cap { panic!("Out of bounds.") }
         unsafe { &*self.buff.add(index) }
     }
 }
