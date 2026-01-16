@@ -24,4 +24,9 @@ fn main() {
     z.push(25.6);
     
     println!("{}", z);
+    
+    let a = DynamicArray::new([25.6, 34.8, 66.9]);
+    
+    println!("{}", a);
+    print!("{}", a[1]);
 }

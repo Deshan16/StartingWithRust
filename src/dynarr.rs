@@ -1,4 +1,4 @@
-use std::{alloc::{Layout, alloc, dealloc, realloc}, fmt, ptr, slice};
+use std::{alloc::{Layout, alloc, dealloc, realloc}, fmt, mem::ManuallyDrop, ops::Index, ptr, slice};
 
 pub(crate) struct DynamicArray<T> {
     buff: *mut T,
@@ -7,6 +7,23 @@ pub(crate) struct DynamicArray<T> {
 }
 
 impl<T> DynamicArray<T> {
+    pub fn new<const N: usize>(arr: [T; N]) -> Self {
+        unsafe {
+            let layout = Layout::array::<T>(N).unwrap();
+            let p = alloc(layout) as *mut T;
+            
+            if p.is_null() { panic!("alloc failed"); }
+            
+            let arr = ManuallyDrop::new(arr);
+            
+            for i in 0..N {
+                ptr::write(p.add(i), ptr::read(&arr[i]));
+            }
+            
+            Self { buff: p, len: N, cap: N }
+        }
+    }
+    
     pub fn reserve(capacity: usize) -> Self {
         unsafe {
             let layout = Layout::array::<T>(capacity).unwrap();
@@ -48,6 +65,15 @@ impl<T: fmt::Debug> fmt::Display for DynamicArray<T> {
             let s = slice::from_raw_parts(self.buff, self.len);
             write!(f, "{:?}", s)
         }
+    }
+}
+
+impl<T> Index<usize> for DynamicArray<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        if index >= self.cap { panic!("Out of bounds") }
+        unsafe { &*self.buff.add(index) }
     }
 }
 
