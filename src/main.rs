@@ -2,8 +2,6 @@ mod dynstr;
 mod sarr;
 mod dynarr;
 
-use std::arch::x86_64::{__m128i, _mm_loadl_epi64};
-
 use dynstr::DynamicString;
 use sarr::StaticArray;
 use dynarr::DynamicArray;
