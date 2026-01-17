@@ -7,14 +7,14 @@ pub(crate) struct DynamicArray<T> {
 }
 
 impl<T> DynamicArray<T> {
-    pub fn new<const N: usize>(arr: [T; N]) -> Self {
+    pub fn new<const N: usize>(array: [T; N]) -> Self {
         unsafe {
             let layout = Layout::array::<T>(N).unwrap();
             let p = alloc(layout) as *mut T;
             
             if p.is_null() { panic!("alloc failed"); }
             
-            let arr = ManuallyDrop::new(arr);
+            let arr = ManuallyDrop::new(array);
             
             for i in 0..N {
                 ptr::write(p.add(i), ptr::read(&arr[i]));
@@ -55,6 +55,14 @@ impl<T> DynamicArray<T> {
             self.grow_buffer(1);
             ptr::write(self.buff.add(self.len), bytes);
             self.len += 1;
+        }
+    }
+    
+    pub fn pop(&mut self) {
+        if self.len == 0 { panic!("Nothing to pop") }
+        unsafe {
+            ptr::drop_in_place(self.buff.add(self.len));
+            self.len -= 1;
         }
     }
 }

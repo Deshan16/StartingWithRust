@@ -1,4 +1,4 @@
-use std::{alloc::{Layout, alloc, dealloc, realloc}, fmt, ptr::{self, NonNull}, slice};
+use std::{alloc::{Layout, alloc, dealloc, realloc}, arch::x86_64::{__m128i, _mm_cmpeq_epi8, _mm_loadl_epi64, _mm_movemask_epi8}, fmt, ops::AddAssign, ptr::{self, NonNull}, slice};
 
 pub(crate) struct DynamicString {
     buff: NonNull<u8>,
@@ -22,6 +22,10 @@ impl DynamicString {
             
             Self { buff: NonNull::new(p).expect("alloc failed"), len: s_len, cap: s_len }
         }
+    }
+    
+    pub fn length(&self) -> usize {
+        return self.len;
     }
     
     fn grow_buffer(&mut self, additinal: usize) {
@@ -55,6 +59,69 @@ impl DynamicString {
             self.len += add_len;
         }
     }
+    
+    pub fn as_str(&mut self) -> &str {
+        unsafe {
+            let s = slice::from_raw_parts(self.buff.as_ptr(), self.len);
+            std::str::from_utf8_unchecked(s)
+        }
+    }
+    
+    pub fn pop(&mut self) {
+        if self.len == 0 { panic!("Nothing to pop") }
+        unsafe {
+            ptr::drop_in_place(self.buff.as_ptr().add(self.len));
+            self.len -= 1;
+        }
+    }
+    
+    pub fn lfind(&self, c: char) -> Option<usize> {
+        unsafe {
+            for i in 0..self.len {
+                if (*self.buff.as_ptr().add(i)) as char == c { return Some(i); }
+            }
+            
+            None
+        }
+    }
+    
+    pub fn rfind(&self, c: char) -> Option<usize> {
+        unsafe {
+            for i in (0..self.len).rev() {
+                if (*self.buff.as_ptr().add(i) as char)  == c { return Some(i); }
+            }
+        }
+        
+        None
+    }
+    
+    fn is_eql(&self, other: &Self) -> bool {
+        if self.len != other.len { return false; }
+        
+        unsafe {
+            let l = self.len;
+            let mut i: usize = 0;
+            
+            if l / 8 > 1 {
+                while i < l - (l % 8) {
+                    let a = _mm_loadl_epi64(self.buff.as_ptr().add(i) as *const __m128i);
+                    let b = _mm_loadl_epi64(other.buff.as_ptr().add(i) as *const __m128i);
+                    
+                    let mask = _mm_movemask_epi8(_mm_cmpeq_epi8(a, b));
+                    
+                    if (mask & 0xFF) != 0xFF { return false; }
+                    i += 8;
+                }
+            }
+            
+            while i < l - 1 {
+                if *self.buff.as_ptr().add(i) != *other.buff.as_ptr().add(i) { return false; }
+                i += 1;
+            }
+            
+            return true;
+        }
+    }
 }
 
 impl fmt::Display for DynamicString {
@@ -66,6 +133,20 @@ impl fmt::Display for DynamicString {
         }
     }
 }
+
+impl AddAssign for DynamicString {
+    fn add_assign(&mut self, mut rhs: Self) {
+        self.append_str(rhs.as_str());
+    }
+}
+
+impl PartialEq for DynamicString {
+    fn eq(&self, other: &Self) -> bool {
+        self.is_eql(other)
+    }
+}
+
+impl Eq for DynamicString {}
 
 impl Drop for DynamicString {
     fn drop(&mut self) {
