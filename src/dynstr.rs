@@ -1,4 +1,4 @@
-use std::{alloc::{Layout, alloc, dealloc, realloc}, arch::x86_64::{__m128i, _mm_cmpeq_epi8, _mm_loadl_epi64, _mm_movemask_epi8}, fmt, ops::AddAssign, ptr::{self, NonNull}, slice};
+use std::{alloc::{Layout, alloc, dealloc, realloc}, arch::x86_64::{__m128i, _mm_cmpeq_epi8, _mm_loadl_epi64, _mm_movemask_epi8, _mm_set1_epi8}, fmt, ops::AddAssign, ptr::{self, NonNull}, slice};
 
 pub(crate) struct DynamicString {
     buff: NonNull<u8>,
@@ -75,24 +75,47 @@ impl DynamicString {
         }
     }
     
-    pub fn lfind(&self, c: char) -> Option<usize> {
+    pub fn index_of(&self, c: char) -> Option<usize> {
         unsafe {
-            for i in 0..self.len {
-                if (*self.buff.as_ptr().add(i)) as char == c { return Some(i); }
+            let l = self.len;
+            let mut i: usize = 0;
+            
+            if l / 8 > 1 {
+                let look_mask = _mm_set1_epi8(c as i8);
+                
+                while i < l - (l % 8) {
+                    let chunk = _mm_loadl_epi64(self.buff.as_ptr().add(i) as *const __m128i);
+                    let mask = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, look_mask)) & 0xFF;
+                    
+                    if mask != 0 { return Some(i + mask.trailing_zeros() as usize) }
+                    
+                    i += 8;
+                }
+            }
+            
+            while i < l - 1 {
+                if *self.buff.as_ptr().add(i) as char == c { return Some(i); }
             }
             
             None
         }
     }
     
-    pub fn rfind(&self, c: char) -> Option<usize> {
+    pub fn find_pattern(&self, pattern: &str) -> bool {
+        let index = match self.index_of((*pattern.as_bytes().get(0).unwrap()) as char) {
+            Some(i) => i,
+            None => return false,
+        };
+        
+        if pattern.len() + index >= self.len { return false; }
+        
         unsafe {
-            for i in (0..self.len).rev() {
-                if (*self.buff.as_ptr().add(i) as char)  == c { return Some(i); }
+            for i in 1..pattern.len() {
+                if *pattern.as_bytes().get(i).unwrap() != *self.buff.as_ptr().add(index + i) { return false; }
             }
         }
         
-        None
+        return true;
     }
     
     fn is_eql(&self, other: &Self) -> bool {
@@ -121,6 +144,23 @@ impl DynamicString {
             
             return true;
         }
+    }
+    
+    pub fn start_with(&self, pattern: &str) -> bool {
+        match self.index_of(*pattern.as_bytes().get(0).unwrap() as char) {
+            Some(i) => {
+                if i > 0 { return false; } else { i }
+            },
+            None => return false,
+        };
+        
+        unsafe {
+            for i in 1..pattern.len() {
+                if *pattern.as_bytes().get(i).unwrap() != *self.buff.as_ptr().add(i) { return false; }
+            }
+        }
+        
+        return true;
     }
 }
 

@@ -7,6 +7,9 @@ use sarr::StaticArray;
 use dynarr::DynamicArray;
 
 fn main() {
+    
+    // let d = String::from("fwref");
+    
     let mut x = DynamicString::new("Deshan");
     x.append_char(' ');
     x.append_str("Anjana");
@@ -18,10 +21,8 @@ fn main() {
     x.pop();
     println!("{}", x);
     
-    match x.lfind('6') {
-        Some(i) => println!("{}", i),
-        None => {},
-    }
+    println!("{}", x.start_with("Anj"));
+    println!("{}", x.start_with("Des"));
     
     let mut  y = StaticArray::<u8>::new(2);
     y.push(5).unwrap();
