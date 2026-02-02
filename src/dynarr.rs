@@ -1,7 +1,7 @@
-use std::{alloc::{Layout, alloc, dealloc, realloc}, fmt, mem::ManuallyDrop, ops::Index, ptr, slice};
+use std::{alloc::{Layout, alloc, dealloc, realloc}, fmt, mem::ManuallyDrop, ops::Index, ptr::{self, NonNull}, slice};
 
 pub(crate) struct DynamicArray<T> {
-    buff: *mut T,
+    buff: NonNull<T>,
     len: usize,
     cap: usize
 }
@@ -20,7 +20,7 @@ impl<T> DynamicArray<T> {
                 ptr::write(p.add(i), ptr::read(&arr[i]));
             }
             
-            Self { buff: p, len: N, cap: N }
+            Self { buff: NonNull::new(p).unwrap(), len: N, cap: N }
         }
     }
     
@@ -31,29 +31,27 @@ impl<T> DynamicArray<T> {
             
             if p.is_null() { panic!("alloc failed"); }
             
-            Self { buff: p, len: 0, cap: capacity }
+            Self { buff: NonNull::new(p).unwrap(), len: 0, cap: capacity }
         }
     }
     
-    fn grow_buffer(&mut self, additinal: usize) {
+    fn grow_buffer(&mut self) {
         unsafe {
-            if additinal + self.len <= self.cap { return; }
-            
-            let new_cap = (self.cap.max(additinal) * 2).max(additinal + self.len);
+            let new_cap = self.cap + self.cap / 2 + 5;
             let old_layout = Layout::array::<T>(self.cap).unwrap();
             
-            let p = realloc(self.buff as *mut u8, old_layout, new_cap * std::mem::size_of::<T>()) as *mut T;
+            let p = realloc(self.buff.as_ptr() as *mut u8, old_layout, new_cap * std::mem::size_of::<T>()) as *mut T;
             if p.is_null() { panic!("realloc failed"); }
             
-            self.buff = p;
+            self.buff = NonNull::new(p).unwrap();
             self.cap = new_cap;
         }
     }
     
     pub fn push(&mut self, bytes: T) {
         unsafe {
-            self.grow_buffer(1);
-            ptr::write(self.buff.add(self.len), bytes);
+            if self.len == self.cap { self.grow_buffer(); }
+            ptr::write(self.buff.as_ptr().add(self.len), bytes);
             self.len += 1;
         }
     }
@@ -61,7 +59,7 @@ impl<T> DynamicArray<T> {
     pub fn pop(&mut self) {
         if self.len == 0 { panic!("Nothing to pop") }
         unsafe {
-            ptr::drop_in_place(self.buff.add(self.len));
+            ptr::drop_in_place(self.buff.as_ptr().add(self.len));
             self.len -= 1;
         }
     }
@@ -70,7 +68,7 @@ impl<T> DynamicArray<T> {
 impl<T: fmt::Debug> fmt::Display for DynamicArray<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
-            let s = slice::from_raw_parts(self.buff, self.len);
+            let s = slice::from_raw_parts(self.buff.as_ptr(), self.len);
             write!(f, "{:?}", s)
         }
     }
@@ -81,7 +79,7 @@ impl<T> Index<usize> for DynamicArray<T> {
 
     fn index(&self, index: usize) -> &Self::Output {
         if index >= self.cap { panic!("Out of bounds") }
-        unsafe { &*self.buff.add(index) }
+        unsafe { &*self.buff.as_ptr().add(index) }
     }
 }
 
@@ -89,11 +87,11 @@ impl<T> Drop for DynamicArray<T> {
     fn drop(&mut self) {
         unsafe {
             for i in 0..self.len {
-                ptr::drop_in_place(self.buff.add(i));
+                ptr::drop_in_place(self.buff.as_ptr().add(i));
             }
             
             let layout = Layout::array::<T>(self.cap).unwrap();
-            dealloc(self.buff as *mut u8, layout);
+            dealloc(self.buff.as_ptr() as *mut u8, layout);
         }
     }
 }

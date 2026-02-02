@@ -9,7 +9,7 @@ pub(crate) struct DynamicString {
 impl DynamicString {
     pub fn new(s: &str) -> Self {
         unsafe {
-            if s.len() == 0 { return Self { buff: NonNull::dangling(), len: 0, cap: 0 }; }
+            if s.len() == 0 { return Self{ buff: NonNull::dangling(), len: 0, cap: 0 }; }
             
             let s_len = s.len();
             
@@ -20,7 +20,7 @@ impl DynamicString {
             
             ptr::copy_nonoverlapping(s.as_ptr(), p, s_len);
             
-            Self { buff: NonNull::new(p).expect("alloc failed"), len: s_len, cap: s_len }
+            Self{ buff: NonNull::new(p).unwrap(), len: s_len, cap: s_len }
         }
     }
     
@@ -33,12 +33,22 @@ impl DynamicString {
             if additinal + self.len <= self.cap { return; }
             
             let new_cap = (self.cap.max(additinal) * 2).max(additinal + self.len);
+            
+            if self.cap == 0 {
+                let layout = Layout::array::<u8>(new_cap).unwrap();
+                let p = alloc(layout);
+                if p.is_null() { panic!("alloc failed"); }
+                
+                self.buff = NonNull::new(p).unwrap();
+                self.cap = new_cap;
+            }
+            
             let old_layout = Layout::array::<u8>(self.cap).unwrap();
             
             let p = realloc(self.buff.as_ptr(), old_layout, new_cap * std::mem::size_of::<u8>());
             if p.is_null() { panic!("realloc failed"); }
             
-            self.buff = NonNull::new(p).expect("alloc failed");
+            self.buff = NonNull::new(p).unwrap();
             self.cap = new_cap;
         }
     }
@@ -69,10 +79,7 @@ impl DynamicString {
     
     pub fn pop(&mut self) {
         if self.len == 0 { panic!("Nothing to pop") }
-        unsafe {
-            ptr::drop_in_place(self.buff.as_ptr().add(self.len));
-            self.len -= 1;
-        }
+        self.len -= 1;
     }
     
     pub fn index_of(&self, c: char) -> Option<usize> {
@@ -95,6 +102,7 @@ impl DynamicString {
             
             while i < l - 1 {
                 if *self.buff.as_ptr().add(i) as char == c { return Some(i); }
+                i += 1
             }
             
             None

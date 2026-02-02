@@ -7,9 +7,6 @@ use sarr::StaticArray;
 use dynarr::DynamicArray;
 
 fn main() {
-    
-    // let d = String::from("fwref");
-    
     let mut x = DynamicString::new("Deshan");
     x.append_char(' ');
     x.append_str("Anjana");
